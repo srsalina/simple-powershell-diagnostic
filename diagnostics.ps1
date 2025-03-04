@@ -94,6 +94,32 @@ Get-NetIPAddress | Where-Object { $_.InterfaceAlias -notlike "*Loopback*" } | Fo
     Write-DiagOutput "  $($_.IPAddress) ($($_.InterfaceAlias))"
 }
 
+# Network Information
+Write-Section "Network Status"
+Write-DiagOutput "Default Gateway Ping: $(Test-Connection 8.8.8.8 -Count 4 | Measure-Object -Property ResponseTime -Average | Select-Object -ExpandProperty Average)ms avg"
+Write-DiagOutput ""
+Write-DiagOutput "DNS Resolution:"; Resolve-DnsName google.com | Select-Object Name,IPAddress | Format-Table -HideTableHeaders | Out-String | ForEach-Object { Write-DiagOutput "  $_" }
+
+# Security Information
+Write-Section "Security Status"
+Write-DiagOutput "Firewall:"; if ((Get-NetFirewallProfile -Profile Domain,Public,Private).Enabled -contains $true) { "  Active" } else { "  Inactive" }
+Write-DiagOutput ""
+Write-DiagOutput "Failed Logins (Last 10):"; Get-EventLog -LogName Security -EntryType FailureAudit -Newest 10 -ErrorAction SilentlyContinue | ForEach-Object { Write-DiagOutput "  $($_.TimeGenerated): $($_.Message -replace '\s+', ' ')" }
+Write-DiagOutput ""
+Write-DiagOutput "Open Ports:"; Get-NetTCPConnection -State Listen | Select-Object -Property LocalPort -Unique | ForEach-Object { Write-DiagOutput "  $($_.LocalPort)" }
+
+# User Activity Information
+Write-Section "User Activity"
+Write-DiagOutput "Logged-in Users:"; Get-CimInstance Win32_LoggedOnUser | Select-Object -Unique Antecedent | ForEach-Object { Write-DiagOutput "  $($_.Antecedent.Name)" }
+Write-DiagOutput ""; Write-DiagOutput "Last Logins:"; Get-EventLog -LogName Security -InstanceId 4624 -Newest 5 -ErrorAction SilentlyContinue | ForEach-Object { Write-DiagOutput "  $($_.TimeGenerated) - User: $($_.ReplacementStrings[5])" }
+
+# Running Services/Applications
+Write-Section "Running Services"
+Write-DiagOutput "Key Services Status:"
+foreach ($svc in @("TermService", "EventLog")) { $status = Get-Service $svc -ErrorAction SilentlyContinue; Write-DiagOutput "  $($svc): $($status.Status)" }
+Write-DiagOutput ""
+Write-DiagOutput "Top Memory Consumers:"; Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 3 | ForEach-Object { Write-DiagOutput "  $($_.Name) ($([math]::Round($_.WorkingSet64/1MB,2))MB)" }
+
 # System Logs
 Write-Section "System Logs (Warnings and Errors)"
 Write-DiagOutput "Last 10 Critical Logs:"
